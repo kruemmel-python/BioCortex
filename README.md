@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/biocortex-brain.jpg" width="600"/>
+  <img width="150" height="150" alt="logo" src="https://github.com/user-attachments/assets/3d153770-667d-42a2-bf79-ee0dd4426c2b" />
   <h2>BioCortex — Ein lebendiges, tensorfreies Lernsystem</h2>
   <p><strong>Lokales Lernen. Neuromodulation. Replay. Erklärbarkeit.</strong></p>
   <a href="https://github.com/kruemmel-python/BioCortex/stargazers"><img src="https://img.shields.io/github/stars/kruemmel-python/BioCortex?style=social" /></a>
@@ -8,12 +8,12 @@
   <a href="https://github.com/kruemmel-python/BioCortex/blob/main/LICENSE"><img src="https://img.shields.io/github/license/kruemmel-python/BioCortex" /></a>
 </p>
 
-
+*
 
 > **Erklärbare KI ohne Backprop.**
 > BioCortex lernt mit lokalen Regeln (STDP), Neuromodulation, Pheromon-Dynamik und Hippocampus-Replay – auf einer robusten **Kneser-Ney**-Sprachmodellbasis. Transparent. Reproduzierbar. Forschbar.
 
-<img width="150" height="150" alt="logo" src="https://github.com/user-attachments/assets/3d153770-667d-42a2-bf79-ee0dd4426c2b" />
+
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
