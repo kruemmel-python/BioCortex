@@ -1,4 +1,14 @@
-# BioCortex — Ein lebendiges, tensorfreies Lernsystem
+<p align="center">
+  <img src="docs/images/biocortex-brain.jpg" width="600"/>
+  <h2>BioCortex — Ein lebendiges, tensorfreies Lernsystem</h2>
+  <p><strong>Lokales Lernen. Neuromodulation. Replay. Erklärbarkeit.</strong></p>
+  <a href="https://github.com/kruemmel-python/BioCortex/stargazers"><img src="https://img.shields.io/github/stars/kruemmel-python/BioCortex?style=social" /></a>
+  <a href="https://github.com/kruemmel-python/BioCortex/forks"><img src="https://img.shields.io/github/forks/kruemmel-python/BioCortex?style=social" /></a>
+  <a href="https://github.com/kruemmel-python/BioCortex/issues"><img src="https://img.shields.io/github/issues/kruemmel-python/BioCortex" /></a>
+  <a href="https://github.com/kruemmel-python/BioCortex/blob/main/LICENSE"><img src="https://img.shields.io/github/license/kruemmel-python/BioCortex" /></a>
+</p>
+
+
 
 > **Erklärbare KI ohne Backprop.**
 > BioCortex lernt mit lokalen Regeln (STDP), Neuromodulation, Pheromon-Dynamik und Hippocampus-Replay – auf einer robusten **Kneser-Ney**-Sprachmodellbasis. Transparent. Reproduzierbar. Forschbar.
