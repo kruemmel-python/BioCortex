@@ -48,7 +48,7 @@ Die meisten modernen Sprachmodelle sind Black Boxes: riesige Tensoren, versteckt
 
 * **Lernen als Beziehung** statt reine Berechnung
 * **Lokale Regeln** statt globaler Backpropagation
-* **Erklärbarkeit & Transparenz** als erste Bürger
+* **Erklärbarkeit & Transparenz** Erklärbarkeit und Transparenz sind Grundprinzipien des Systems.
 
 Das zugehörige Essay: *“Manifest des Lebendigen Denkens – KI ohne Tensoren”* (siehe `manifest.md`).
 
