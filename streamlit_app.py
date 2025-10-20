@@ -5,7 +5,7 @@ import glob
 import io
 import pathlib
 from dataclasses import asdict
-from typing import Iterable
+from typing import Iterable, Callable
 
 import random
 
@@ -24,10 +24,14 @@ from biollm import (
     ReplayConfig,
 )
 
-
+# ──────────────────────────────────────────────────────────────────────────────
+# Streamlit Setup
+# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="BioCortex Studio", layout="wide")
 
-
+# ──────────────────────────────────────────────────────────────────────────────
+# Hilfsfunktionen
+# ──────────────────────────────────────────────────────────────────────────────
 def _read_manifest(path: str = "manifest.md") -> str:
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -52,6 +56,7 @@ def _display_logo(*, width: int = 96) -> None:
 
 
 def _load_texts_from_upload(files: Iterable[io.BytesIO]) -> list[str]:
+    """Lädt Upload-Dateien vollständig in den RAM (klassisch)."""
     texts: list[str] = []
     for fh in files:
         try:
@@ -60,6 +65,58 @@ def _load_texts_from_upload(files: Iterable[io.BytesIO]) -> list[str]:
             data = fh.getvalue().decode("utf-8", errors="ignore")
         texts.append(data)
     return texts
+
+
+def incremental_train_from_uploads(
+    model: BioCortex,
+    files: Iterable[io.BytesIO],
+    *,
+    lines_per_sample: int = 1_000,
+    encoding: str = "utf-8",
+    progress_cb: Callable[[str, int, int, str], None] | None = None,
+) -> None:
+    """
+    RAM-schonendes, inkrementelles Training:
+    - Liest jede Upload-Datei zeilenweise.
+    - Baut Chunks von `lines_per_sample` zusammen.
+    - Ruft für jeden Chunk `model.partial_fit([chunk])` auf.
+    - Optional: Fortschritt via `progress_cb(stage, step, total, detail)`.
+    """
+
+    def _chunks_from_text(s: str) -> Iterable[str]:
+        buf: list[str] = []
+        for ln in s.splitlines():
+            ln = ln.strip("\n")
+            if ln:
+                buf.append(ln)
+            if len(buf) >= lines_per_sample:
+                yield "\n".join(buf)
+                buf.clear()
+        if buf:
+            yield "\n".join(buf)
+
+    file_idx = 0
+    for fh in files:
+        file_idx += 1
+        try:
+            try:
+                data = fh.getvalue().decode(encoding)
+            except UnicodeDecodeError:
+                data = fh.getvalue().decode(encoding, errors="ignore")
+
+            for chunk_idx, chunk in enumerate(_chunks_from_text(data), start=1):
+                if progress_cb:
+                    progress_cb(
+                        stage=f"Upload {file_idx}",
+                        step=chunk_idx,
+                        total=0,
+                        detail=f"Chunk {chunk_idx} · ~{lines_per_sample} Zeilen",
+                    )
+                model.partial_fit([chunk])
+        except Exception as exc:
+            if progress_cb:
+                progress_cb(stage=f"Upload {file_idx}", step=0, total=0, detail=f"Übersprungen: {exc}")
+            continue
 
 
 def _current_model() -> BioCortex | None:
@@ -180,6 +237,7 @@ def _config_from_sidebar() -> BioLLMConfig:
             st.sidebar.text(f"📄 {lf}\n" + "".join(lines))
         except OSError:
             st.sidebar.warning(f"Logdatei konnte nicht gelesen werden: {lf}")
+
     with st.sidebar.expander("Tokenizer (BioBPE)", expanded=False):
         vocab_size = st.number_input("Vokabulargröße", min_value=64, max_value=8192, value=4000, step=64)
         min_pair_freq = st.number_input("Min. Paarhäufigkeit", min_value=1, max_value=20, value=2)
@@ -232,7 +290,9 @@ def _config_from_sidebar() -> BioLLMConfig:
         gamma_bias=float(gamma_bias),
     )
 
-
+# ──────────────────────────────────────────────────────────────────────────────
+# App
+# ──────────────────────────────────────────────────────────────────────────────
 def main() -> None:
     col_logo, col_title = st.columns([1, 4])
     with col_logo:
@@ -252,6 +312,7 @@ def main() -> None:
         "Manifest",
     ])
 
+    # ── Tab: Training ─────────────────────────────────────────────────────────
     with tabs[0]:
         st.subheader("Training & Feinjustierung")
         uploaded_files = st.file_uploader(
@@ -262,11 +323,10 @@ def main() -> None:
         extra_text = st.text_area("Zusätzlicher Trainingstext", height=200)
 
         if st.button("Neues Modell trainieren"):
-            texts = _load_texts_from_upload(uploaded_files) if uploaded_files else []
-            if extra_text.strip():
-                texts.append(extra_text)
-            if not texts:
-                st.warning("Bitte mindestens einen Text bereitstellen.")
+            has_uploads = bool(uploaded_files)
+            has_extra = bool(extra_text.strip())
+            if not has_uploads and not has_extra:
+                st.warning("Bitte mindestens eine Datei hochladen oder Zusatztext eingeben.")
             else:
                 progress_bar = st.progress(0.0, text="Starte Training…")
                 stage_placeholder = st.empty()
@@ -277,16 +337,14 @@ def main() -> None:
 
                 def _update_history() -> None:
                     if events:
-                        history_placeholder.markdown(
-                            "\n".join(f"- {entry}" for entry in events[-8:])
-                        )
+                        history_placeholder.markdown("\n".join(f"- {entry}" for entry in events[-8:]))
                     else:
                         history_placeholder.empty()
 
                 def progress_callback(stage: str, step: int, total: int, detail: str) -> None:
-                    fraction = step / total if total else 0.0
+                    fraction = 0.0 if total == 0 else step / total
                     progress_bar.progress(min(max(fraction, 0.0), 1.0), text=stage)
-                    stage_placeholder.markdown(f"**{stage}** ({step}/{total})")
+                    stage_placeholder.markdown(f"**{stage}** ({step}/{total})" if total else f"**{stage}**")
                     if stage.lower().startswith("replay"):
                         phase_placeholder.info("🟦 Schlaf/Replay-Phase aktiv")
                     else:
@@ -301,7 +359,18 @@ def main() -> None:
 
                 try:
                     model = BioCortex(cfg)
-                    model.fit(texts, progress=progress_callback)
+
+                    # Wichtig: Tokenizer/Lernen initialisieren mit kleinem Start
+                    if has_uploads:
+                        incremental_train_from_uploads(
+                            model,
+                            uploaded_files,
+                            lines_per_sample=1_000,
+                            progress_cb=progress_callback,
+                        )
+                    if has_extra:
+                        model.partial_fit([extra_text], progress=progress_callback)
+
                 except Exception as exc:
                     progress_bar.empty()
                     stage_placeholder.empty()
@@ -324,11 +393,10 @@ def main() -> None:
             if model is None:
                 st.info("Kein Modell geladen. Bitte zuerst trainieren oder laden.")
             else:
-                texts = _load_texts_from_upload(uploaded_files) if uploaded_files else []
-                if extra_text.strip():
-                    texts.append(extra_text)
-                if not texts:
-                    st.warning("Für das Feintraining werden neue Texte benötigt.")
+                has_uploads = bool(uploaded_files)
+                has_extra = bool(extra_text.strip())
+                if not has_uploads and not has_extra:
+                    st.warning("Für das Feintraining bitte Dateien hochladen oder Zusatztext eingeben.")
                 else:
                     progress_bar = st.progress(0.0, text="Starte Feintraining…")
                     stage_placeholder = st.empty()
@@ -339,16 +407,14 @@ def main() -> None:
 
                     def _update_history() -> None:
                         if events:
-                            history_placeholder.markdown(
-                                "\n".join(f"- {entry}" for entry in events[-8:])
-                            )
+                            history_placeholder.markdown("\n".join(f"- {entry}" for entry in events[-8:]))
                         else:
                             history_placeholder.empty()
 
                     def progress_callback(stage: str, step: int, total: int, detail: str) -> None:
-                        fraction = step / total if total else 0.0
+                        fraction = 0.0 if total == 0 else step / total
                         progress_bar.progress(min(max(fraction, 0.0), 1.0), text=stage)
-                        stage_placeholder.markdown(f"**{stage}** ({step}/{total})")
+                        stage_placeholder.markdown(f"**{stage}** ({step}/{total})" if total else f"**{stage}**")
                         if stage.lower().startswith("replay"):
                             phase_placeholder.info("🟦 Schlaf/Replay-Phase aktiv")
                         else:
@@ -362,7 +428,16 @@ def main() -> None:
                         _update_history()
 
                     try:
-                        model.partial_fit(texts, progress=progress_callback)
+                        if has_uploads:
+                            incremental_train_from_uploads(
+                                model,
+                                uploaded_files,
+                                lines_per_sample=1_000,
+                                progress_cb=progress_callback,
+                            )
+                        if has_extra:
+                            model.partial_fit([extra_text], progress=progress_callback)
+
                     except Exception as exc:
                         progress_bar.empty()
                         stage_placeholder.empty()
@@ -379,6 +454,7 @@ def main() -> None:
                         st.markdown("### Aktualisierte Metadaten")
                         st.json(model.current_meta())
 
+    # ── Tab: Generierung ───────────────────────────────────────────────────────
     with tabs[1]:
         st.subheader("Textgenerierung")
         model = _current_model()
@@ -420,6 +496,7 @@ def main() -> None:
                 st.markdown("### Neuromodulatoren-Protokoll")
                 plot_modulators(last_trace.mod_history)
 
+    # ── Tab: Synapsen-Graph ───────────────────────────────────────────────────
     with tabs[2]:
         st.subheader("Synapsen-Graph")
         model = _current_model()
@@ -431,6 +508,7 @@ def main() -> None:
             st.markdown("### Plastizitäts-Kennzahlen")
             st.json(model.current_meta())
 
+    # ── Tab: Replay ───────────────────────────────────────────────────────────
     with tabs[3]:
         st.subheader("Replay-Dynamik")
         model = _current_model()
@@ -453,6 +531,7 @@ def main() -> None:
             else:
                 st.info("Noch keine Replay-Logs vorhanden.")
 
+    # ── Tab: Modelle verwalten ────────────────────────────────────────────────
     with tabs[4]:
         st.subheader("Modelle verwalten")
         model = _current_model()
@@ -496,6 +575,7 @@ def main() -> None:
                 st.markdown("### Gespeicherte Metadaten")
                 st.json(model.current_meta())
 
+    # ── Tab: Manifest ─────────────────────────────────────────────────────────
     with tabs[5]:
         st.subheader("Manifest des Lebendigen Denkens")
         _display_logo(width=96)
